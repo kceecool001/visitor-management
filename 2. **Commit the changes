@@ -1,0 +1,1 @@
+git commit -m "fix: address SAST security findings - add non-root users, security hardening, and XSS prevention"
