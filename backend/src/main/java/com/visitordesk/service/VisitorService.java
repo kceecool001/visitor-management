@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @Service
@@ -42,5 +43,9 @@ public class VisitorService {
     
     public List<Visitor> getAllVisitors() {
         return visitorRepository.findAllByOrderByCheckinTimeDesc();
+    }
+    
+    public List<Visitor> getVisitorsByDate(LocalDate date) {
+        return visitorRepository.findByCheckinDate(date);
     }
 }
