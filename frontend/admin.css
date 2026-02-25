@@ -1,0 +1,76 @@
+.admin-container {
+    max-width: 1100px;
+}
+
+.admin-controls {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.admin-controls input,
+.admin-controls button {
+    flex: 1;
+}
+
+.visitor-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+}
+
+.visitor-table th {
+    background: #667eea;
+    color: white;
+    padding: 15px;
+    text-align: left;
+    font-size: 1.1rem;
+}
+
+.visitor-table td {
+    padding: 15px;
+    border-bottom: 1px solid #eee;
+    font-size: 1rem;
+}
+
+.visitor-table tr:nth-child(even) {
+    background: #f8f9fa;
+}
+
+.visitor-table tr:hover {
+    background: #eef2ff;
+}
+
+.status-badge {
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.status-checked-in {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-checked-out {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.loading,
+.no-data {
+    text-align: center;
+    margin: 20px 0;
+    font-size: 1.2rem;
+}
+
+.visitor-count {
+    margin-top: 20px;
+    font-size: 1.2rem;
+    font-weight: 600;
+}

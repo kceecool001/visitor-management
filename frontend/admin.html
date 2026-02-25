@@ -2,13 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Admin Dashboard</title>
+    <title>VisitorDesk Admin</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="admin.css">
 </head>
 <body>
 
 <div id="login-screen" class="screen active">
-    <div class="container">
+    <div class="container admin-container">
         <h1>Admin Login</h1>
         <form id="login-form">
             <div class="form-group">
@@ -21,26 +22,33 @@
 </div>
 
 <div id="dashboard-screen" class="screen">
-    <div class="container">
+    <div class="container admin-container">
         <h1>Visitor Dashboard</h1>
 
-        <div class="form-group">
-            <input type="text" id="search-input" placeholder="Search by name or company">
-        </div>
-
-        <div class="form-group">
+        <div class="admin-controls">
+            <input type="text" id="search-input" placeholder="Search visitors...">
             <input type="date" id="date-filter">
-            <button id="clear-filter" class="btn-secondary">Clear Filters</button>
+            <button id="clear-filter" class="btn-secondary">Clear</button>
         </div>
 
-        <div id="loading" class="error-message">Loading...</div>
-        <div id="no-data" class="error-message">No visitors found.</div>
+        <div id="loading" class="loading">Loading...</div>
+        <div id="no-data" class="no-data">No visitors found.</div>
 
-        <table>
+        <table class="visitor-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Company</th>
+                    <th>Department</th>
+                    <th>Check-in Time</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
             <tbody id="visitors-tbody"></tbody>
         </table>
 
-        <p>Total visitors: <span id="visitor-count">0</span></p>
+        <p class="visitor-count">Total visitors: <span id="visitor-count">0</span></p>
+
         <button id="logout-btn" class="btn-secondary">Logout</button>
     </div>
 </div>

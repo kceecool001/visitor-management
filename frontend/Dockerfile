@@ -5,6 +5,7 @@ COPY style.css /usr/share/nginx/html/
 COPY app.js /usr/share/nginx/html/
 COPY admin.js /usr/share/nginx/html/
 COPY admin.html /usr/share/nginx/html/
+COPY admin.css /usr/share/nginx/html/
 
 EXPOSE 80
 
