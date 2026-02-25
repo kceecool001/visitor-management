@@ -1,4 +1,4 @@
-name: Build and Push Docker Images
+name: VisitorDesk CI/CD Pipeline
 
 on:
   push:
@@ -6,6 +6,9 @@ on:
       - main
 
 jobs:
+  # ─────────────────────────────────────────
+  # STAGE 1 - SECRET SCANNING
+  # ─────────────────────────────────────────
   secret-scanning:
     runs-on: ubuntu-latest
     steps:
@@ -13,11 +16,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
+
       - name: Run Gitleaks secret scan
         continue-on-error: true
         run: |
-          docker run --rm -v $(pwd):/repo zricethezav/gitleaks:latest detect --source /repo --report-path /repo/gitleaks-report.json --report-format json --verbose || true
+          docker run --rm -v $(pwd):/repo zricethezav/gitleaks:latest \
+            detect --source /repo \
+            --report-path /repo/gitleaks-report.json \
+            --report-format json --verbose || true
+
           if [ -f gitleaks-report.json ]; then
             echo "===== SECRET SCAN SUMMARY ====="
             SECRET_COUNT=$(jq '. | length' gitleaks-report.json 2>/dev/null || echo "0")
@@ -31,7 +38,7 @@ jobs:
             echo "No secrets detected"
             echo '[]' > gitleaks-report.json
           fi
-      
+
       - name: Upload secret scan report
         uses: actions/upload-artifact@v4
         if: always()
@@ -39,108 +46,44 @@ jobs:
           name: secret-scan-report
           path: gitleaks-report.json
 
-  dependency-vulnerability-scan:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: 'maven'
-      
-      - name: Run OWASP Dependency Check
-        continue-on-error: true
-        working-directory: ./backend
-        run: |
-          mvn org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=11 || true
-          if [ -f target/dependency-check-report.html ]; then
-            echo "===== DEPENDENCY VULNERABILITY SUMMARY ====="
-            if [ -f target/dependency-check-report.json ]; then
-              CRITICAL=$(jq '[.dependencies[].vulnerabilities[]? | select(.severity=="CRITICAL")] | length' target/dependency-check-report.json 2>/dev/null || echo "0")
-              HIGH=$(jq '[.dependencies[].vulnerabilities[]? | select(.severity=="HIGH")] | length' target/dependency-check-report.json 2>/dev/null || echo "0")
-              MEDIUM=$(jq '[.dependencies[].vulnerabilities[]? | select(.severity=="MEDIUM")] | length' target/dependency-check-report.json 2>/dev/null || echo "0")
-              LOW=$(jq '[.dependencies[].vulnerabilities[]? | select(.severity=="LOW")] | length' target/dependency-check-report.json 2>/dev/null || echo "0")
-              echo "Critical: $CRITICAL"
-              echo "High: $HIGH"
-              echo "Medium: $MEDIUM"
-              echo "Low: $LOW"
-            fi
-            echo "============================================"
-          fi
-      
-      - name: Upload dependency check report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: dependency-check-report
-          path: backend/target/dependency-check-report.*
-
-  sast-semgrep:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Run Semgrep SAST scan
-        continue-on-error: true
-        run: |
-          docker run --rm -v $(pwd):/src returntocorp/semgrep semgrep --config=auto --json --output=/src/semgrep-report.json /src || true
-          if [ -f semgrep-report.json ]; then
-            echo "===== SAST SCAN SUMMARY ====="
-            HIGH=$(jq '[.results[] | select(.extra.severity=="ERROR")] | length' semgrep-report.json 2>/dev/null || echo "0")
-            MEDIUM=$(jq '[.results[] | select(.extra.severity=="WARNING")] | length' semgrep-report.json 2>/dev/null || echo "0")
-            INFO=$(jq '[.results[] | select(.extra.severity=="INFO")] | length' semgrep-report.json 2>/dev/null || echo "0")
-            echo "High severity: $HIGH"
-            echo "Medium severity: $MEDIUM"
-            echo "Info: $INFO"
-            echo "============================="
-          else
-            echo "No SAST findings"
-            echo '{"results":[]}' > semgrep-report.json
-          fi
-      
-      - name: Upload SAST report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: sast-report
-          path: semgrep-report.json
-
+  # ─────────────────────────────────────────
+  # STAGE 2 - DOCKERFILE LINTING
+  # ─────────────────────────────────────────
   dockerfile-lint:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Run Hadolint on frontend Dockerfile
         continue-on-error: true
         run: |
-          docker run --rm -i hadolint/hadolint < frontend/Dockerfile > hadolint-frontend.txt || true
+          docker run --rm -i hadolint/hadolint < frontend/Dockerfile > hadolint-frontend.txt 2>&1 || true
           echo "===== HADOLINT FRONTEND DOCKERFILE ====="
           cat hadolint-frontend.txt || echo "No issues found"
           echo "========================================"
-      
+
       - name: Run Hadolint on backend Dockerfile
         continue-on-error: true
         run: |
-          docker run --rm -i hadolint/hadolint < backend/Dockerfile > hadolint-backend.txt || true
+          docker run --rm -i hadolint/hadolint < backend/Dockerfile > hadolint-backend.txt 2>&1 || true
           echo "===== HADOLINT BACKEND DOCKERFILE ====="
           cat hadolint-backend.txt || echo "No issues found"
           echo "======================================="
-      
+
       - name: Combine Hadolint reports
         if: always()
         run: |
           echo "=== Frontend Dockerfile ===" > hadolint-report.txt
-          cat hadolint-frontend.txt >> hadolint-report.txt || true
+          cat hadolint-frontend.txt >> hadolint-report.txt 2>/dev/null || echo "No issues" >> hadolint-report.txt
           echo "" >> hadolint-report.txt
           echo "=== Backend Dockerfile ===" >> hadolint-report.txt
-          cat hadolint-backend.txt >> hadolint-report.txt || true
-      
+          cat hadolint-backend.txt >> hadolint-report.txt 2>/dev/null || echo "No issues" >> hadolint-report.txt
+          FRONTEND_ISSUES=$(wc -l < hadolint-frontend.txt 2>/dev/null || echo "0")
+          BACKEND_ISSUES=$(wc -l < hadolint-backend.txt 2>/dev/null || echo "0")
+          echo "HADOLINT_FRONTEND=$FRONTEND_ISSUES" >> $GITHUB_ENV
+          echo "HADOLINT_BACKEND=$BACKEND_ISSUES" >> $GITHUB_ENV
+
       - name: Upload Hadolint report
         uses: actions/upload-artifact@v4
         if: always()
@@ -148,34 +91,141 @@ jobs:
           name: hadolint-report
           path: hadolint-report.txt
 
-  license-check:
+  # ─────────────────────────────────────────
+  # STAGE 3 - SAST SCANNING
+  # ─────────────────────────────────────────
+  sast-semgrep:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
+      - name: Run Semgrep SAST scan
+        continue-on-error: true
+        run: |
+          docker run --rm -v $(pwd):/src semgrep/semgrep \
+            semgrep --config=auto --json \
+            --output=/src/semgrep-report.json /src || true
+
+          if [ -f semgrep-report.json ]; then
+            echo "===== SAST SCAN SUMMARY ====="
+            HIGH=$(jq '[.results[] | select(.extra.severity=="ERROR")] | length' semgrep-report.json 2>/dev/null || echo "0")
+            MEDIUM=$(jq '[.results[] | select(.extra.severity=="WARNING")] | length' semgrep-report.json 2>/dev/null || echo "0")
+            INFO=$(jq '[.results[] | select(.extra.severity=="INFO")] | length' semgrep-report.json 2>/dev/null || echo "0")
+            echo "High severity:   $HIGH"
+            echo "Medium severity: $MEDIUM"
+            echo "Info:            $INFO"
+            echo "============================="
+            echo "SAST_HIGH=$HIGH" >> $GITHUB_ENV
+            echo "SAST_MEDIUM=$MEDIUM" >> $GITHUB_ENV
+          else
+            echo "No SAST findings"
+            echo '{"results":[]}' > semgrep-report.json
+            echo "SAST_HIGH=0" >> $GITHUB_ENV
+            echo "SAST_MEDIUM=0" >> $GITHUB_ENV
+          fi
+
+      - name: Upload SAST report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sast-report
+          path: semgrep-report.json
+
+  # ─────────────────────────────────────────
+  # STAGE 4 - DEPENDENCY VULNERABILITY SCAN
+  # ─────────────────────────────────────────
+  dependency-vulnerability-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
           cache: 'maven'
-      
+
+      - name: Run OWASP Dependency Check
+        continue-on-error: true
+        timeout-minutes: 30
+        working-directory: ./backend
+        run: |
+          mvn org.owasp:dependency-check-maven:check \
+            -DfailBuildOnCVSS=11 \
+            -Dformats=HTML,JSON || true
+
+          if [ -f target/dependency-check-report.json ]; then
+            echo "===== DEPENDENCY VULNERABILITY SUMMARY ====="
+            CRITICAL=$(jq '[.dependencies[].vulnerabilities[]? | select(.severity=="CRITICAL")] | length' target/dependency-check-report.json 2>/dev/null || echo "0")
+            HIGH=$(jq '[.dependencies[].vulnerabilities[]? | select(.severity=="HIGH")] | length' target/dependency-check-report.json 2>/dev/null || echo "0")
+            MEDIUM=$(jq '[.dependencies[].vulnerabilities[]? | select(.severity=="MEDIUM")] | length' target/dependency-check-report.json 2>/dev/null || echo "0")
+            LOW=$(jq '[.dependencies[].vulnerabilities[]? | select(.severity=="LOW")] | length' target/dependency-check-report.json 2>/dev/null || echo "0")
+            echo "Critical: $CRITICAL"
+            echo "High:     $HIGH"
+            echo "Medium:   $MEDIUM"
+            echo "Low:      $LOW"
+            echo "============================================"
+            echo "DEP_CRITICAL=$CRITICAL" >> $GITHUB_ENV
+            echo "DEP_HIGH=$HIGH" >> $GITHUB_ENV
+            echo "DEP_MEDIUM=$MEDIUM" >> $GITHUB_ENV
+          else
+            echo "Dependency check report not generated"
+            echo "DEP_CRITICAL=0" >> $GITHUB_ENV
+            echo "DEP_HIGH=0" >> $GITHUB_ENV
+            echo "DEP_MEDIUM=0" >> $GITHUB_ENV
+          fi
+
+      - name: Upload dependency check report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dependency-check-report
+          path: backend/target/dependency-check-report.*
+
+  # ─────────────────────────────────────────
+  # STAGE 5 - LICENSE CHECK
+  # ─────────────────────────────────────────
+  license-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+
       - name: Run license check
         continue-on-error: true
         working-directory: ./backend
         run: |
           mvn license:add-third-party -Dlicense.outputDirectory=. || true
+
           if [ -f THIRD-PARTY.txt ]; then
             echo "===== LICENSE CHECK SUMMARY ====="
             echo "Third-party licenses detected:"
             cat THIRD-PARTY.txt | head -50
             echo ""
             echo "Checking for restrictive licenses..."
-            grep -iE "(GPL|AGPL|LGPL|SSPL|Commons Clause)" THIRD-PARTY.txt || echo "No highly restrictive licenses found"
+            RESTRICTIVE=$(grep -icE "(GPL|AGPL|LGPL|SSPL|Commons Clause)" THIRD-PARTY.txt || echo "0")
+            if [ "$RESTRICTIVE" -gt 0 ]; then
+              echo "WARNING: Restrictive licenses found:"
+              grep -iE "(GPL|AGPL|LGPL|SSPL|Commons Clause)" THIRD-PARTY.txt || true
+            else
+              echo "No highly restrictive licenses found"
+            fi
             echo "================================="
+            echo "LICENSE_ISSUES=$RESTRICTIVE" >> $GITHUB_ENV
+          else
+            echo "LICENSE_ISSUES=0" >> $GITHUB_ENV
           fi
-      
+
       - name: Upload license report
         uses: actions/upload-artifact@v4
         if: always()
@@ -183,139 +233,114 @@ jobs:
           name: license-check-report
           path: backend/THIRD-PARTY.txt
 
+  # ─────────────────────────────────────────
+  # STAGE 6 - BUILD, TEST, AND PUSH
+  # Waits for secret scan, lint and SAST before building
+  # ─────────────────────────────────────────
   build-and-test:
     runs-on: ubuntu-latest
-    
+    needs: [secret-scanning, dockerfile-lint, sast-semgrep]
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
           cache: 'maven'
-      
+
       - name: Run backend tests
         working-directory: ./backend
         run: mvn test
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-      
-      - name: Build and push frontend image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
-          push: true
-          tags: |
-            ${{ secrets.DOCKER_USERNAME }}/visitordesk-frontend:latest
-            ${{ secrets.DOCKER_USERNAME }}/visitordesk-frontend:${{ github.sha }}
-          cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/visitordesk-frontend:buildcache
-          cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/visitordesk-frontend:buildcache,mode=max
-      
-      - name: Build and push backend image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./backend
-          file: ./backend/Dockerfile
-          push: true
-          tags: |
-            ${{ secrets.DOCKER_USERNAME }}/visitordesk-backend:latest
-            ${{ secrets.DOCKER_USERNAME }}/visitordesk-backend:${{ github.sha }}
-          cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/visitordesk-backend:buildcache
-          cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/visitordesk-backend:buildcache,mode=max
 
-  container-image-scanning:
-    runs-on: ubuntu-latest
-    needs: build-and-test
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-      
-      - name: Pull frontend image
-        run: docker pull ${{ secrets.DOCKER_USERNAME }}/visitordesk-frontend:${{ github.sha }}
-      
-      - name: Run Trivy scan on frontend image
+
+      - name: Build frontend image locally
+        run: |
+          docker build -t visitordesk-frontend:${{ github.sha }} ./frontend
+
+      - name: Build backend image locally
+        run: |
+          docker build -t visitordesk-backend:${{ github.sha }} ./backend
+
+      - name: Scan frontend image with Trivy
         continue-on-error: true
         run: |
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
             -v $(pwd):/output \
             aquasec/trivy image \
             --format json \
             --output /output/trivy-frontend.json \
-            ${{ secrets.DOCKER_USERNAME }}/visitordesk-frontend:${{ github.sha }} || true
-          
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            visitordesk-frontend:${{ github.sha }} || true
+
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
             -v $(pwd):/output \
             aquasec/trivy image \
             --format sarif \
             --output /output/trivy-frontend.sarif \
-            ${{ secrets.DOCKER_USERNAME }}/visitordesk-frontend:${{ github.sha }} || true
-          
+            visitordesk-frontend:${{ github.sha }} || true
+
           if [ -f trivy-frontend.json ]; then
             echo "===== TRIVY FRONTEND IMAGE SCAN ====="
-            docker run --rm -v $(pwd):/output aquasec/trivy image --format table ${{ secrets.DOCKER_USERNAME }}/visitordesk-frontend:${{ github.sha }} || true
             CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-frontend.json 2>/dev/null || echo "0")
             HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-frontend.json 2>/dev/null || echo "0")
             MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="MEDIUM")] | length' trivy-frontend.json 2>/dev/null || echo "0")
-            echo "Critical: $CRITICAL, High: $HIGH, Medium: $MEDIUM"
+            echo "Critical: $CRITICAL | High: $HIGH | Medium: $MEDIUM"
             echo "====================================="
+            echo "TRIVY_FE_CRITICAL=$CRITICAL" >> $GITHUB_ENV
+            echo "TRIVY_FE_HIGH=$HIGH" >> $GITHUB_ENV
           fi
-      
-      - name: Pull backend image
-        run: docker pull ${{ secrets.DOCKER_USERNAME }}/visitordesk-backend:${{ github.sha }}
-      
-      - name: Run Trivy scan on backend image
+
+      - name: Scan backend image with Trivy
         continue-on-error: true
         run: |
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
             -v $(pwd):/output \
             aquasec/trivy image \
             --format json \
             --output /output/trivy-backend.json \
-            ${{ secrets.DOCKER_USERNAME }}/visitordesk-backend:${{ github.sha }} || true
-          
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            visitordesk-backend:${{ github.sha }} || true
+
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
             -v $(pwd):/output \
             aquasec/trivy image \
             --format sarif \
             --output /output/trivy-backend.sarif \
-            ${{ secrets.DOCKER_USERNAME }}/visitordesk-backend:${{ github.sha }} || true
-          
+            visitordesk-backend:${{ github.sha }} || true
+
           if [ -f trivy-backend.json ]; then
             echo "===== TRIVY BACKEND IMAGE SCAN ====="
-            docker run --rm -v $(pwd):/output aquasec/trivy image --format table ${{ secrets.DOCKER_USERNAME }}/visitordesk-backend:${{ github.sha }} || true
             CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-backend.json 2>/dev/null || echo "0")
             HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-backend.json 2>/dev/null || echo "0")
             MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="MEDIUM")] | length' trivy-backend.json 2>/dev/null || echo "0")
-            echo "Critical: $CRITICAL, High: $HIGH, Medium: $MEDIUM"
+            echo "Critical: $CRITICAL | High: $HIGH | Medium: $MEDIUM"
             echo "===================================="
+            echo "TRIVY_BE_CRITICAL=$CRITICAL" >> $GITHUB_ENV
+            echo "TRIVY_BE_HIGH=$HIGH" >> $GITHUB_ENV
           fi
-      
-      - name: Upload Trivy SARIF to GitHub Security
+
+      - name: Upload Trivy SARIF to GitHub Security (Frontend)
         uses: github/codeql-action/upload-sarif@v3
         continue-on-error: true
         if: always()
         with:
           sarif_file: trivy-frontend.sarif
           category: trivy-frontend
-      
+
       - name: Upload Trivy SARIF to GitHub Security (Backend)
         uses: github/codeql-action/upload-sarif@v3
         continue-on-error: true
@@ -323,7 +348,7 @@ jobs:
         with:
           sarif_file: trivy-backend.sarif
           category: trivy-backend
-      
+
       - name: Upload Trivy scan reports
         uses: actions/upload-artifact@v4
         if: always()
@@ -335,19 +360,127 @@ jobs:
             trivy-frontend.sarif
             trivy-backend.sarif
 
+      - name: Push frontend image to Docker Hub
+        run: |
+          docker tag visitordesk-frontend:${{ github.sha }} ${{ secrets.DOCKER_USERNAME }}/visitordesk-frontend:latest
+          docker tag visitordesk-frontend:${{ github.sha }} ${{ secrets.DOCKER_USERNAME }}/visitordesk-frontend:${{ github.sha }}
+          docker push ${{ secrets.DOCKER_USERNAME }}/visitordesk-frontend:latest
+          docker push ${{ secrets.DOCKER_USERNAME }}/visitordesk-frontend:${{ github.sha }}
+
+      - name: Push backend image to Docker Hub
+        run: |
+          docker tag visitordesk-backend:${{ github.sha }} ${{ secrets.DOCKER_USERNAME }}/visitordesk-backend:latest
+          docker tag visitordesk-backend:${{ github.sha }} ${{ secrets.DOCKER_USERNAME }}/visitordesk-backend:${{ github.sha }}
+          docker push ${{ secrets.DOCKER_USERNAME }}/visitordesk-backend:latest
+          docker push ${{ secrets.DOCKER_USERNAME }}/visitordesk-backend:${{ github.sha }}
+
+  # ─────────────────────────────────────────
+  # STAGE 7 - SECURITY SUMMARY
+  # Always runs last, never fails
+  # ─────────────────────────────────────────
   security-summary:
     runs-on: ubuntu-latest
-    needs: [secret-scanning, dependency-vulnerability-scan, sast-semgrep, dockerfile-lint, license-check, container-image-scanning]
+    needs: [secret-scanning, dependency-vulnerability-scan, sast-semgrep, dockerfile-lint, license-check, build-and-test]
     if: always()
-    
+
     steps:
       - name: Download all security artifacts
         uses: actions/download-artifact@v4
         continue-on-error: true
-      
-      - name: Generate security summary
-        run: |
-          echo "=========================================="
-          echo "===== VISITORI understand you want me to update `.github/workflows/build.yml` to add comprehensive DevSecOps security scanning stages that never fail the pipeline. Let me add all the security scanning stages with the requirements you specified.
+        with:
+          path: security-reports
 
-.github/workflows/build.yml
+      - name: Generate consolidated security summary
+        run: |
+          echo ""
+          echo "=========================================================="
+          echo "           VISITORDESK SECURITY REPORT"
+          echo "   Build: ${{ github.sha }}"
+          echo "   Branch: ${{ github.ref_name }}"
+          echo "   Triggered by: ${{ github.actor }}"
+          echo "   Date: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "=========================================================="
+          echo ""
+
+          # Secret Scanning
+          SECRET_COUNT=0
+          if [ -f security-reports/secret-scan-report/gitleaks-report.json ]; then
+            SECRET_COUNT=$(jq '. | length' security-reports/secret-scan-report/gitleaks-report.json 2>/dev/null || echo "0")
+          fi
+          echo "🔐 SECRET SCANNING"
+          echo "   Secrets found: $SECRET_COUNT"
+          echo ""
+
+          # Dependency Vulnerabilities
+          DEP_CRITICAL=0
+          DEP_HIGH=0
+          DEP_MEDIUM=0
+          if [ -f security-reports/dependency-check-report/dependency-check-report.json ]; then
+            DEP_CRITICAL=$(jq '[.dependencies[].vulnerabilities[]? | select(.severity=="CRITICAL")] | length' security-reports/dependency-check-report/dependency-check-report.json 2>/dev/null || echo "0")
+            DEP_HIGH=$(jq '[.dependencies[].vulnerabilities[]? | select(.severity=="HIGH")] | length' security-reports/dependency-check-report/dependency-check-report.json 2>/dev/null || echo "0")
+            DEP_MEDIUM=$(jq '[.dependencies[].vulnerabilities[]? | select(.severity=="MEDIUM")] | length' security-reports/dependency-check-report/dependency-check-report.json 2>/dev/null || echo "0")
+          fi
+          echo "📦 DEPENDENCY VULNERABILITIES (OWASP)"
+          echo "   Critical: $DEP_CRITICAL"
+          echo "   High:     $DEP_HIGH"
+          echo "   Medium:   $DEP_MEDIUM"
+          echo ""
+
+          # SAST
+          SAST_HIGH=0
+          SAST_MEDIUM=0
+          if [ -f security-reports/sast-report/semgrep-report.json ]; then
+            SAST_HIGH=$(jq '[.results[] | select(.extra.severity=="ERROR")] | length' security-reports/sast-report/semgrep-report.json 2>/dev/null || echo "0")
+            SAST_MEDIUM=$(jq '[.results[] | select(.extra.severity=="WARNING")] | length' security-reports/sast-report/semgrep-report.json 2>/dev/null || echo "0")
+          fi
+          echo "🔍 STATIC CODE ANALYSIS (Semgrep)"
+          echo "   High:   $SAST_HIGH"
+          echo "   Medium: $SAST_MEDIUM"
+          echo ""
+
+          # Container Scanning
+          FE_CRITICAL=0; FE_HIGH=0
+          BE_CRITICAL=0; BE_HIGH=0
+          if [ -f security-reports/trivy-scan-report/trivy-frontend.json ]; then
+            FE_CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' security-reports/trivy-scan-report/trivy-frontend.json 2>/dev/null || echo "0")
+            FE_HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' security-reports/trivy-scan-report/trivy-frontend.json 2>/dev/null || echo "0")
+          fi
+          if [ -f security-reports/trivy-scan-report/trivy-backend.json ]; then
+            BE_CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' security-reports/trivy-scan-report/trivy-backend.json 2>/dev/null || echo "0")
+            BE_HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' security-reports/trivy-scan-report/trivy-backend.json 2>/dev/null || echo "0")
+          fi
+          echo "🐳 CONTAINER IMAGE SCANNING (Trivy)"
+          echo "   Frontend → Critical: $FE_CRITICAL | High: $FE_HIGH"
+          echo "   Backend  → Critical: $BE_CRITICAL | High: $BE_HIGH"
+          echo ""
+
+          # Dockerfile Lint
+          echo "📋 DOCKERFILE LINTING (Hadolint)"
+          if [ -f security-reports/hadolint-report/hadolint-report.txt ]; then
+            LINT_ISSUES=$(grep -c "DL\|SC" security-reports/hadolint-report/hadolint-report.txt 2>/dev/null || echo "0")
+            echo "   Issues found: $LINT_ISSUES"
+          else
+            echo "   Issues found: 0"
+          fi
+          echo ""
+
+          # License Check
+          echo "⚖️  LICENSE COMPLIANCE"
+          if [ -f security-reports/license-check-report/THIRD-PARTY.txt ]; then
+            RESTRICTIVE=$(grep -icE "(GPL|AGPL|LGPL|SSPL|Commons Clause)" security-reports/license-check-report/THIRD-PARTY.txt 2>/dev/null || echo "0")
+            echo "   Restrictive licenses: $RESTRICTIVE"
+          else
+            echo "   Restrictive licenses: 0"
+          fi
+          echo ""
+
+          echo "=========================================================="
+          echo "  📁 Full reports available in GitHub Actions Artifacts"
+          echo "  🔒 Trivy findings visible in GitHub Security tab"
+          echo "  ℹ️  Pipeline set to REPORT ONLY — no gates enforced yet"
+          echo "=========================================================="
+          echo ""
+          echo "✅ Security summary complete. Pipeline succeeded."
+
+      - name: Always succeed
+        run: exit 0
