@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VisitorDesk - Check In</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <div id="checkin-form" class="screen active">
+            <div class="container">
+                <h1>Visitor Check-In</h1>
+                <form id="visitor-form">
+                    <div class="form-group">
+                        <input 
+                            type="text" 
+                            id="visitorName" 
+                            name="visitorName" 
+                            placeholder="Your Full Name" 
+                            required
+                            autocomplete="off"
+                        >
+                    </div>
+                    <div class="form-group">
+                        <input 
+                            type="text" 
+                            id="visitorCompany" 
+                            name="visitorCompany" 
+                            placeholder="Your Company (if applicable)" 
+                            autocomplete="off"
+                        >
+                    </div>
+                    <div class="form-group">
+                        <input 
+                            type="text" 
+                            id="visitingDepartment" 
+                            name="visitingDepartment" 
+                            placeholder="Who are you here to see?" 
+                            required
+                            autocomplete="off"
+                        >
+                    </div>
+                    <button type="submit" class="btn-primary">Check In</button>
+                </form>
+                <div id="error-message" class="error-message"></div>
+            </div>
+        </div>
+
+        <div id="welcome-screen" class="screen">
+            <div class="welcome-container">
+                <div class="welcome-content">
+                    <h1 id="welcome-message" class="welcome-title"></h1>
+                    <p id="welcome-subtext" class="welcome-subtext">Your visit has been logged. Please wait to be attended to.</p>
+                    <p id="visitor-company-display" class="visitor-company"></p>
+                </div>
+                <button id="check-another" class="btn-secondary">Check In Another Visitor</button>
+            </div>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
