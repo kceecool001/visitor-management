@@ -1,6 +1,8 @@
 package com.visitordesk.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.LocalDateTime;
 
 @Entity
@@ -26,6 +28,7 @@ public class Visitor {
     @Column(name = "status", length = 20)
     private String status;
     
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "metadata", columnDefinition = "jsonb")
     private String metadata;
     
